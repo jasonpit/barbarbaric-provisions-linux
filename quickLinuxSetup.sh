@@ -3,51 +3,14 @@
 # Check for Bash version 4 or later
 if [ "${BASH_VERSINFO[0]}" -lt 4 ]; then
     echo "Your Bash version is ${BASH_VERSINFO[0]}. This script requires Bash 4.0 or later."
-
-    # Detect package manager and try to install bash
-    if command -v apt >/dev/null 2>&1; then
-        echo "Attempting to install newer bash using apt..."
-        sudo apt update && sudo apt install -y bash
-    elif command -v dnf >/dev/null 2>&1; then
-        echo "Attempting to install newer bash using dnf..."
-        sudo dnf install -y bash
-    elif command -v yum >/dev/null 2>&1; then
-        echo "Attempting to install newer bash using yum..."
-        sudo yum install -y bash
-    else
-        echo "Unsupported package manager. Please upgrade bash manually."
-        exit 1
-    fi
-
-    # Check again
+    echo "Attempting to install newer bash using apt..."
+    sudo apt update && sudo apt install -y bash
     exec bash "$0" "$@"
 fi
 
-
-### Install NVIDIA Drivers ###
-
-echo "Checking for NVIDIA GPU and installing drivers..."
-
-if lspci | grep -i nvidia > /dev/null; then
-    if command -v apt >/dev/null 2>&1; then
-        echo "Installing NVIDIA drivers using apt..."
-        sudo apt update && sudo apt install -y nvidia-driver
-    elif command -v dnf >/dev/null 2>&1; then
-        echo "Installing NVIDIA drivers using dnf..."
-        sudo dnf install -y akmod-nvidia || sudo dnf install -y kmod-nvidia
-    elif command -v yum >/dev/null 2>&1; then
-        echo "Installing NVIDIA drivers using yum..."
-        sudo yum install -y akmod-nvidia || sudo yum install -y kmod-nvidia
-    else
-        echo "Unsupported package manager. Please install NVIDIA drivers manually."
-    fi
-else
-    echo "No NVIDIA GPU detected. Skipping driver installation."
-fi
-
-### A script to set up a new Linux system ###
+### A script to set up a new Debian system ###
 ### Author: Jason Pittman ###
-### Version: 1.3 (Updated 2025-03-31) ###
+### Version: 1.8 (Updated 2025-04-15) ###
 
 clear
 cat << "EOF"
@@ -69,62 +32,123 @@ cat << "EOF"
        /     \.___.d|    .'
        `--..__)8888P`._.'
 
+
 EOF
 
-echo "🐧 Time to set up your Linux system! 🐧"
+echo "🐧 Time to set up your Debian system with Tux! 🐧"
 sleep 3
 
-echo "Starting Linux setup script..."
-echo "📸 Reminder: Set your screenshot directory manually if needed."
+echo "Starting Debian setup script..."
 
-# Create GitHub folder in ~/Documents and create a symlink in ~/ "helps auto sync with iCloud or OneDrive by being in ~/Documents"
+# Install prerequisites for repository setup
+sudo apt update
+sudo apt install -y curl wget gpg
+
+# Set custom screenshot location
+SCREENSHOT_DIR="$HOME/Pictures/ScreenShots"
+mkdir -p "$SCREENSHOT_DIR"
+gsettings set org.gnome.gnome-screenshot auto-save-directory "file://$SCREENSHOT_DIR"
+
+# Create GitHub folder in ~/Documents and create a symlink in ~/
 GITHUB_DIR="$HOME/Documents/GitHub"
 mkdir -p "$GITHUB_DIR"
 ln -sfn "$GITHUB_DIR" "$HOME/GitHub"
 
-echo "💾 Reminder: Store important files in OneDrive or cloud storage for easy recovery! 🚀"
+echo "💾 Reminder: Store important files in cloud storage for easy recovery! 🚀"
 
-# Ensure Homebrew is installed
-if ! command -v brew &>/dev/null; then
-    echo "Homebrew is not installed. Installing..."
-    /bin/bash -c "$(curl -fsSL https://raw.githubusercontent.com/Homebrew/install/HEAD/install.sh)" || {
-        echo "❌ Homebrew installation failed!"; exit 1;
-    }
-    eval "$(/opt/homebrew/bin/brew shellenv)"
-    echo 'eval "$(/opt/homebrew/bin/brew shellenv)"' >> "$HOME/.zprofile"
+# Configure Debian mirror (deb.debian.org for GeoIP-based mirror selection)
+echo "Configuring Debian mirror..."
+sudo bash -c 'cat > /etc/apt/sources.list <<EOF
+deb http://deb.debian.org/debian bookworm main contrib non-free
+deb-src http://deb.debian.org/debian bookworm main contrib non-free
+deb http://deb.debian.org/debian-security bookworm-security main contrib non-free
+deb http://deb.debian.org/debian bookworm-updates main contrib non-free
+EOF'
+sudo apt update
+
+# Install NVIDIA drivers if applicable
+echo "Checking for NVIDIA GPU and installing drivers..."
+if lspci | grep -i nvidia > /dev/null; then
+    echo "Installing NVIDIA drivers using apt..."
+    sudo apt install -y nvidia-driver
 else
-    echo "✅ Homebrew is already installed. Updating..."
-    brew update && brew upgrade && brew doctor
-
-    # Ensure HashiCorp tap is added for HashiCorp tools
-    if ! brew tap | grep -q "hashicorp/tap"; then
-        echo "Tapping hashicorp/tap for HashiCorp tools..."
-        brew tap hashicorp/tap
-    fi
+    echo "No NVIDIA GPU detected. Skipping driver installation."
 fi
 
-# Backup Finder preferences
-FINDER_PLIST=~/Library/Preferences/com.apple.finder.plist
-if [ -f "$FINDER_PLIST" ]; then
-    cp "$FINDER_PLIST" ~/Desktop/com.apple.finder.plist.backup
-    echo "✅ Finder preferences backed up!"
-else
-    echo "⚠️ Finder preferences not found, skipping backup."
-fi
+# Add external repositories
+add_repositories() {
+    # Microsoft Edge
+    curl -fsSL https://packages.microsoft.com/keys/microsoft.asc | sudo gpg --dearmor -o /usr/share/keyrings/microsoft-edge.gpg
+    echo "deb [arch=amd64 signed-by=/usr/share/keyrings/microsoft-edge.gpg] https://packages.microsoft.com/repos/edge stable main" | sudo tee /etc/apt/sources.list.d/microsoft-edge.list
 
-# List of software to install
+    # Google Chrome
+    curl -fsSL https://dl.google.com/linux/linux_signing_key.pub | sudo gpg --dearmor -o /usr/share/keyrings/chrome.gpg
+    echo "deb [arch=amd64 signed-by=/usr/share/keyrings/chrome.gpg] http://dl.google.com/linux/chrome/deb/ stable main" | sudo tee /etc/apt/sources.list.d/google-chrome.list
+
+    # Brave Browser
+    curl -fsSL https://brave-browser-apt-release.s3.brave.com/brave-browser-archive-keyring.gpg | sudo gpg --dearmor -o /usr/share/keyrings/brave-browser.gpg
+    echo "deb [arch=amd64 signed-by=/usr/share/keyrings/brave-browser.gpg] https://brave-browser-apt-release.s3.brave.com/ stable main" | sudo tee /etc/apt/sources.list.d/brave-browser-release.list
+
+    # HashiCorp (Terraform)
+    curl -fsSL https://apt.releases.hashicorp.com/gpg | sudo gpg --dearmor -o /usr/share/keyrings/hashicorp.gpg
+    echo "deb [arch=amd64 signed-by=/usr/share/keyrings/hashicorp.gpg] https://apt.releases.hashicorp.com bookworm main" | sudo tee /etc/apt/sources.list.d/hashicorp.list
+
+    # GitHub CLI
+    curl -fsSL https://cli.github.com/packages/githubcli-archive-keyring.gpg | sudo gpg --dearmor -o /usr/share/keyrings/githubcli.gpg
+    echo "deb [arch=amd64 signed-by=/usr/share/keyrings/githubcli.gpg] https://cli.github.com/packages stable main" | sudo tee /etc/apt/sources.list.d/githubcli.list
+
+    # Slack
+    curl -fsSL https://packagecloud.io/slacktechnologies/slack/gpgkey | sudo gpg --dearmor -o /usr/share/keyrings/slack.gpg
+    echo "deb [arch=amd64 signed-by=/usr/share/keyrings/slack.gpg] https://packagecloud.io/slacktechnologies/slack/debian jessie main" | sudo tee /etc/apt/sources.list.d/slack.list
+
+    # ZeroTier
+    curl -fsSL https://raw.githubusercontent.com/zerotier/ZeroTierOne/master/doc/contact%40zerotier.com.gpg | sudo gpg --dearmor -o /usr/share/keyrings/zerotier.gpg
+    echo "deb [arch=amd64 signed-by=/usr/share/keyrings/zerotier.gpg] http://download.zerotier.com/debian/bookworm bookworm main" | sudo tee /etc/apt/sources.list.d/zerotier.list
+
+    # Azure CLI
+    curl -fsSL https://packages.microsoft.com/keys/microsoft.asc | sudo gpg --dearmor -o /usr/share/keyrings/microsoft.gpg
+    echo "deb [arch=amd64 signed-by=/usr/share/keyrings/microsoft.gpg] https://packages.microsoft.com/repos/azure-cli/ bookworm main" | sudo tee /etc/apt/sources.list.d/azure-cli.list
+
+    sudo apt update
+}
+
+# Install manual .deb packages
+install_manual_deb() {
+    # WhatsApp
+    echo "Installing WhatsApp..."
+    curl -fsSL -o whatsapp.deb https://www.whatsapp.com/android/WhatsApp.apk # Note: WhatsApp for Linux is unofficial; adjust URL if official .deb exists
+    sudo dpkg -i whatsapp.deb || sudo apt install -f -y
+    rm whatsapp.deb
+
+    # Zoom
+    echo "Installing Zoom..."
+    curl -fsSL -o zoom.deb https://zoom.us/client/latest/zoom_amd64.deb
+    sudo dpkg -i zoom.deb || sudo apt install -f -y
+    rm zoom.deb
+
+    # Balena Etcher
+    echo "Installing Balena Etcher..."
+    curl -fsSL -o etcher.deb https://github.com/balena-io/etcher/releases/latest/download/balena-etcher-electron_amd64.deb
+    sudo dpkg -i etcher.deb || sudo apt install -f -y
+    rm etcher.deb
+
+    # NoMachine
+    echo "Installing NoMachine..."
+    curl -fsSL -o nomachine.deb https://www.nomachine.com/free/linux/64/deb
+    sudo dpkg -i nomachine.deb || sudo apt install -f -y
+    rm nomachine.deb
+}
+
+# List of software to install via apt
 declare -A SOFTWARE_PACKAGES=(
-    ["Development & CLI Tools"]="awscli azure-cli docker gh git php mysql node azcopy terraform"
-    ["Web Browsers"]="microsoft-edge google-chrome firefox chromium google-chrome-canary brave-browser"
-    ["Design & Media"]="krita inkscape vlc ffmpeg snagit airfoil"
-    ["Communication"]="skype whatsapp zoom slack microsoft-teams"
-    ["Utilities & System Tools"]="cyberduck balenaetcher the-unarchiver steam transmission"
-    ["Android Development"]="android-commandlinetools android-file-transfer android-platform-tools scrcpy"
-    ["Terminal & Networking"]="iterm2 nomachine zerotier-one angry-ip-scanner"
-    ["Audio & Music"]="native-access"
+    ["Development & CLI Tools"]="awscli azure-cli docker.io gh git php mariadb-client nodejs terraform"
+    ["Web Browsers"]="firefox chromium microsoft-edge-stable google-chrome-stable brave-browser"
+    ["Design & Media"]="krita inkscape vlc ffmpeg shutter"
+    ["Communication"]="skypeforlinux slack-desktop teams"
+    ["Utilities & System Tools"]="filezilla unar steam transmission-gtk"
+    ["Android Development"]="android-tools-adb android-tools-fastboot mtp-tools scrcpy"
+    ["Terminal & Networking"]="gnome-terminal zerotier-one nmap"
 )
-
-
 
 # Function to prompt for confirmation
 confirm_install() {
@@ -132,24 +156,41 @@ confirm_install() {
     [[ "$choice" =~ ^[Yy]$ ]]
 }
 
-# Install software
+# Add repositories
+add_repositories
+
+# Install azcopy manually (not in apt)
+if confirm_install "azcopy"; then
+    echo "Installing azcopy..."
+    curl -fsSL -o azcopy.tar.gz https://aka.ms/downloadazcopy-v10-linux
+    tar -xzf azcopy.tar.gz
+    sudo mv azcopy_linux_amd64_*/azcopy /usr/bin/
+    rm -rf azcopy.tar.gz azcopy_linux_amd64_*
+    echo "✅ azcopy installed!"
+else
+    echo "❌ Skipping azcopy"
+fi
+
+# Install software via apt
 for category in "${!SOFTWARE_PACKAGES[@]}"; do
     if confirm_install "$category"; then
         for package in ${SOFTWARE_PACKAGES[$category]}; do
-            # Check if the package is available as a cask
-            if brew info --cask "$package" > /dev/null 2>&1; then
-                echo "Installing $package as a cask..."
-                brew install --cask "$package"
-            else
-                echo "Installing $package as a formula..."
-                brew install "$package"
-            fi
+            echo "Installing $package..."
+            sudo apt install -y "$package"
         done
         echo "✅ $category installed!"
     else
         echo "❌ Skipping $category"
     fi
 done
+
+# Install manual .deb packages
+if confirm_install "Manual .deb Packages (WhatsApp, Zoom, Etcher, NoMachine)"; then
+    install_manual_deb
+    echo "✅ Manual .deb packages installed!"
+else
+    echo "❌ Skipping manual .deb packages"
+fi
 
 # Oh My Zsh installation
 if confirm_install "Oh My Zsh" && [ ! -d "$HOME/.oh-my-zsh" ]; then
@@ -165,33 +206,32 @@ if confirm_install "Custom Aliases"; then
     ALIAS_FILE="$HOME/.oh-my-zsh/custom/aliases.zsh"
     mkdir -p "$(dirname "$ALIAS_FILE")"
     cat > "$ALIAS_FILE" <<EOF
-## list all properly like in Linux.
+## List commands
 alias ll='ls -al'
 alias la='ls -a'
 alias lt='ls -alt'
 alias duh='du -sh * | sort -h'
 
-## open my alias file in vim.
+## Open alias file in vim
 alias aliases='vim ~/.oh-my-zsh/custom/aliases.zsh'
 
-## run apple softwareupdates and then run brew updates.
-alias update='sudo softwareupdate -ia --verbose && brew upgrade'
-alias brewup='brew update && brew upgrade && brew cleanup'
+## System updates
+alias update='sudo apt update && sudo apt upgrade -y'
+alias ports='ss -tuln'
 
-## give me my public IPv4, Ethernet, and Wi-Fi IPs with labels.
-alias ip='echo "Public IPv4: $(curl -4 -s ifconfig.co)" && echo "Ethernet (en0): $(ipconfig getifaddr en0 2>/dev/null || echo "Not connected")" && echo "Wi-Fi (en1): $(ipconfig getifaddr en1 2>/dev/null || echo "Not connected")"'
+## Network utilities
+alias ip='ip addr show | grep inet'
 alias pingg='ping -c 4 google.com'
-alias ports='lsof -i -P | grep LISTEN'
 
-## give me a random password
+## Random password generator
 alias pw='openssl rand -base64 16'
 
-## SSH and server management - you need to update this with your own servers and SSH keys
-alias server1='ssh -i ~/.ssh/.yourSSHKey 10.x.x.x.x' # replace with your server IP  
-alias tailserver1='ssh -i ~/.yourSSHKey 10.x.x.x.x' "tail -f /var/log/syslog"' # replace with your server IP  
-alias server2='ssh -i ~/.yourSSHKey 10.x.x.x.x''  # replace with your server IP  
-alias tailserver2='ssh -i ~/.yourSSHKey 10.x.x.x.x' "tail -f /var/log/syslog"' # replace with your server IP  
-alias dockerserver='ssh -i ~/.yourSSHKey 10.x.x.x.x' # replace with your server IP  
+## SSH and server management - update with your own servers and SSH keys
+alias server1='ssh -i ~/.ssh/yourSSHKey 10.x.x.x' # replace with your server IP
+alias tailserver1='ssh -i ~/.ssh/yourSSHKey 10.x.x.x tail -f /var/log/syslog' # replace with your server IP
+alias server2='ssh -i ~/.ssh/yourSSHKey 10.x.x.x' # replace with your server IP
+alias tailserver2='ssh -i ~/.ssh/yourSSHKey 10.x.x.x tail -f /var/log/syslog' # replace with your server IP
+alias dockerserver='ssh -i ~/.ssh/yourSSHKey 10.x.x.x' # replace with your server IP
 
 ## Development
 alias gs='git status'
@@ -200,7 +240,6 @@ alias gc='git commit -m'
 alias gp='git push'
 
 ## System utilities
-alias flushdns='sudo dscacheutil -flushcache; sudo killall -HUP mDNSResponder'
 alias cleanup='find . -type f -name "*.DS_Store" -delete'
 
 ## Productivity
@@ -213,37 +252,35 @@ else
     echo "❌ Skipping Custom Aliases setup"
 fi
 
-# Finder Customization  
-if confirm_install "Finder Customization"; then
-    defaults write com.apple.finder FXPreferredViewStyle -string "clmv"
-    defaults write com.apple.finder ShowPathbar -bool true
-    defaults write com.apple.finder ShowStatusBar -bool true
-    killall Finder
-    echo "✅ Finder customized!"
+# GNOME Customization
+if confirm_install "GNOME Customization"; then
+    # Show hidden files in Nautilus
+    gsettings set org.gnome.nautilus.preferences show-hidden-files true
+    # Enable pathbar
+    gsettings set org.gnome.nautilus.preferences always-use-location-entry true
+    # Set list view
+    gsettings set org.gnome.nautilus.preferences default-folder-viewer 'list-view'
+    echo "✅ GNOME customized!"
 else
-    echo "❌ Skipping Finder customization"
+    echo "❌ Skipping GNOME customization"
 fi
 
-# Dock Customization
-if confirm_install "Linux Dock Customization"; then
-    # Preserve existing dock items (do not clear them)
-    # If you wish to clear the Dock items, uncomment the next line
-    # defaults write com.apple.dock persistent-apps -array
-    
-    # Optionally add spacer tiles without removing current items
-    for i in {1..6}; do
-        defaults write com.apple.dock persistent-apps -array-add '{"tile-type"="spacer-tile";}'
-    done
-    defaults write com.apple.dock mineffect -string scale
-    killall Dock
-    echo "✅ Dock customized!"
+# GNOME Dock Customization
+if confirm_install "GNOME Dock Customization"; then
+    # Enable dock autohide
+    gsettings set org.gnome.shell.extensions.dash-to-dock dock-fixed false
+    # Set click action
+    gsettings set org.gnome.shell.extensions.dash-to-dock click-action 'minimize-or-previews'
+    # Add spacers (simulate macOS Dock spacers)
+    gsettings set org.gnome.shell.extensions.dash-to-dock custom-theme-shrink true
+    echo "✅ GNOME Dock customized!"
 else
-    echo "❌ Skipping Dock customization"
+    echo "❌ Skipping GNOME Dock customization"
 fi
 
 # Cleanup
-if confirm_install "Homebrew Cleanup"; then
-    brew cleanup
+if confirm_install "System Cleanup"; then
+    sudo apt autoremove -y && sudo apt autoclean
     echo "✅ Cleanup complete!"
 else
     echo "❌ Skipping Cleanup"
