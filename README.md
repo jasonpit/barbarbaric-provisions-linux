@@ -19,8 +19,7 @@ Features
 Usage
 	1.	Clone this repo:
 
-git clone https://github.com/jasonpit/barbarbaric-provisions-linux.git
-cd barbarbaric-provisions-linux
+sudo apt update && sudo apt install -y git curl wget gpg && git clone https://github.com/jasonpit/barbarbaric-provisions-linux.git ~/GitHub/barbarbaric-provisions-linux && chmod +x ~/GitHub/barbarbaric-provisions-linux/setup-debian.sh && ~/GitHub/barbarbaric-provisions-linux/setup-debian.sh
 
 	2.	Run the setup script:
 
